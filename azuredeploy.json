@@ -1,0 +1,151 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "description": "Azure Logic App that returns client's public IP address in multiple formats",
+    "author": "groovy-sky"
+  },
+  "parameters": {
+    "logicAppName": {
+      "type": "string",
+      "defaultValue": "whatismyip-app",
+      "metadata": {
+        "description": "Name of the Logic App"
+      }
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "swedencentral",
+      "metadata": {
+        "description": "Location for the Logic App"
+      }
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Logic/workflows",
+      "apiVersion": "2019-05-01",
+      "name": "[parameters('logicAppName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "state": "Enabled",
+        "definition": {
+          "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+          "contentVersion": "1.0.0.0",
+          "parameters": {
+            "$connections": {
+              "type": "Object",
+              "defaultValue": {}
+            }
+          },
+          "triggers": {
+            "When_a_HTTP_request_is_received": {
+              "type": "Request",
+              "kind": "Http",
+              "inputs": {
+                "method": "GET",
+                "schema": {}
+              }
+            }
+          },
+          "actions": {
+            "Compose_Client_IP": {
+              "type": "Compose",
+              "inputs": "@first(split(first(split(coalesce(triggerOutputs().headers?['X-Forwarded-For'], '127.0.0.1'), ',')), ':'))"
+            },
+            "If_Format_JSON": {
+              "type": "If",
+              "expression": {
+                "and": [
+                  {
+                    "equals": [
+                      "@toLower(coalesce(triggerOutputs()?['queries']?['format'], ''))",
+                      "json"
+                    ]
+                  }
+                ]
+              },
+              "runAfter": {
+                "Compose_Client_IP": [
+                  "Succeeded"
+                ]
+              },
+              "actions": {
+                "Response_JSON": {
+                  "type": "Response",
+                  "inputs": {
+                    "statusCode": 200,
+                    "headers": {
+                      "Content-Type": "application/json"
+                    },
+                    "body": {
+                      "ip": "@outputs('Compose_Client_IP')"
+                    }
+                  }
+                }
+              },
+              "else": {
+                "actions": {
+                  "If_Format_JSONP": {
+                    "type": "If",
+                    "expression": {
+                      "and": [
+                        {
+                          "equals": [
+                            "@toLower(coalesce(triggerOutputs()?['queries']?['format'], ''))",
+                            "jsonp"
+                          ]
+                        }
+                      ]
+                    },
+                    "actions": {
+                      "Response_JSONP": {
+                        "type": "Response",
+                        "inputs": {
+                          "statusCode": 200,
+                          "headers": {
+                            "Content-Type": "application/javascript"
+                          },
+                          "body": "@concat('callback(', '{\"ip\":\"', outputs('Compose_Client_IP'), '\"}', ');')"
+                        }
+                      }
+                    },
+                    "else": {
+                      "actions": {
+                        "Response_Text": {
+                          "type": "Response",
+                          "inputs": {
+                            "statusCode": 200,
+                            "headers": {
+                              "Content-Type": "text/plain"
+                            },
+                            "body": "@outputs('Compose_Client_IP')"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "outputs": {}
+        },
+        "parameters": {
+          "$connections": {
+            "value": {}
+          }
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "logicAppTriggerUrl": {
+      "type": "string",
+      "value": "[listCallbackUrl(resourceId('Microsoft.Logic/workflows/triggers', parameters('logicAppName'), 'When_a_HTTP_request_is_received'), '2019-05-01').value]",
+      "metadata": {
+        "description": "The URL to trigger the Logic App (includes SAS token)"
+      }
+    }
+  }
+}
