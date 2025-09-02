@@ -15,7 +15,7 @@
     },
     "location": {
       "type": "string",
-      "defaultValue": "swedencentral",
+      "defaultValue": "[resourceGroup().location]",
       "metadata": {
         "description": "Location for the Logic App"
       }
